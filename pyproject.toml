@@ -1,0 +1,42 @@
+[build-system]
+requires = ["scikit-build-core>=0.10.0"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "qwen3-asr"
+version = "0.1.0"
+description = "Qwen3 ASR — Python bindings for qwen3-asr.cpp"
+authors = [{ name = "devcxl" }]
+license = { text = "MIT" }
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+[tool.scikit-build]
+cmake.args = [
+    "-DQWEN3_ASR_BUILD_PYTHON=ON",
+    "-DGGML_CUDA=OFF",
+    "-DGGML_OPENMP=OFF",
+    "-DGGML_NATIVE=OFF",
+    "-DGGML_ACCELERATE=OFF",
+    "-DQWEN3_ASR_TIMING=OFF",
+    "-DCMAKE_AR=/tmp/zig-ar",
+    "-DCMAKE_RANLIB=/tmp/zig-ranlib",
+]
+cmake.version = ">=3.20"
+build.targets = ["_core"]
+wheel.py-api = "cp312"
+wheel.packages = ["python/qwen3_asr"]
+sdist.include = [
+    "python/",
+    "src/",
+    "ggml/",
+    "third_party/",
+    "CMakeLists.txt",
+    "cmake/",
+    "ggml-config.h",
+]

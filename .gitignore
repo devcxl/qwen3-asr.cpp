@@ -6,6 +6,17 @@ cmake-build-*/
 models/*.gguf
 Qwen3-ASR-0.6B/
 
+# Python shared libraries (generated)
+*.so
+python/qwen3_asr/_core.cpython*.so
+
+# Zig artifacts
+*.o
+zig-toolchain.cmake
+
+# Build output
+build_python/
+
 # Test reference data (generated)
 tests/reference/*.npy
 tests/reference/*.bin

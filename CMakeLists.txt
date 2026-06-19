@@ -274,10 +274,15 @@ target_link_libraries(test_encoder_no_chunk PRIVATE
     Threads::Threads
 )
 
-# Install targets
-install(TARGETS mel_spectrogram audio_encoder text_decoder audio_injection qwen3_asr forced_aligner qwen3-asr-cli
+# Install targets — skip CLI when building only Python bindings
+if(NOT QWEN3_ASR_BUILD_PYTHON)
+    install(TARGETS qwen3-asr-cli
+        RUNTIME DESTINATION bin
+    )
+endif()
+
+install(TARGETS mel_spectrogram audio_encoder text_decoder audio_injection qwen3_asr forced_aligner
     ARCHIVE DESTINATION lib
-    RUNTIME DESTINATION bin
 )
 install(FILES src/mel_spectrogram.h src/audio_encoder.h src/gguf_loader.h src/text_decoder.h src/audio_injection.h src/qwen3_asr.h src/forced_aligner.h
     DESTINATION include
@@ -338,6 +343,18 @@ if(APPLE)
     )
 endif()
 
-install(TARGETS qwen3-asr-server
-    RUNTIME DESTINATION bin
-)
+# Install server binary — skip when building only Python bindings
+if(NOT QWEN3_ASR_BUILD_PYTHON)
+    install(TARGETS qwen3-asr-server
+        RUNTIME DESTINATION bin
+    )
+endif()
+
+# ============================================================
+# Python bindings (optional, requires pybind11)
+# ============================================================
+option(QWEN3_ASR_BUILD_PYTHON "Build Python bindings" OFF)
+if(QWEN3_ASR_BUILD_PYTHON)
+    find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
+    include(cmake/python.cmake)
+endif()
