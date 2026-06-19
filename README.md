@@ -48,44 +48,65 @@ On Linux, replace `$(sysctl -n hw.ncpu)` with `$(nproc)`.
 
 ### 4. HTTP Server (OpenAI-compatible API)
 
-Start the ASR HTTP server with OpenAI-compatible endpoints for audio transcription:
+Start the ASR HTTP server — provides OpenAI-compatible endpoints for audio transcription, supporting concurrent requests with slot-based parallelism:
 
 ```bash
-# Start server
-./build/qwen3-asr-server -m models/qwen3-asr-0.6b-f16.gguf --host 0.0.0.0 --port 8080
+# Start server (default: 127.0.0.1:8080, 1 parallel slot)
+./build/qwen3-asr-server -m models/qwen3-asr-0.6b-f16.gguf
 
-# With parallel inference slots (handle multiple concurrent requests)
-./build/qwen3-asr-server -m models/qwen3-asr-0.6b-f16.gguf -np 4 -t 4
+# With 4 parallel inference slots, bind to all interfaces
+./build/qwen3-asr-server -m models/qwen3-asr-0.6b-f16.gguf -np 4 -t 4 --host 0.0.0.0 --port 8080
 ```
 
 **Endpoints:**
 
 | Method | Path | Description |
 |--------|------|-------------|
+| `GET` | `/health` | Health check (shorter alias) |
 | `GET` | `/v1/health` | Health check |
 | `GET` | `/v1/models` | List available models |
 | `POST` | `/v1/audio/transcriptions` | Transcribe audio (OpenAI-compatible) |
 
-**Usage with curl:**
+**curl examples (all response formats):**
 
 ```bash
-# Transcribe audio file
+# JSON response: {"text": "... transcription ..."}
 curl http://localhost:8080/v1/audio/transcriptions \
   -F "file=@audio.wav" \
   -F "response_format=json"
 
-# Get text output
+# Plain text response
 curl http://localhost:8080/v1/audio/transcriptions \
   -F "file=@audio.wav" \
   -F "response_format=text"
 
-# Python client (OpenAI SDK compatible)
-python3 -c "
+# SubRip (SRT) subtitle format
+curl http://localhost:8080/v1/audio/transcriptions \
+  -F "file=@audio.wav" \
+  -F "response_format=srt"
+
+# WebVTT subtitle format
+curl http://localhost:8080/v1/audio/transcriptions \
+  -F "file=@audio.wav" \
+  -F "response_format=vtt"
+
+# Verbose JSON with duration info
+curl http://localhost:8080/v1/audio/transcriptions \
+  -F "file=@audio.wav" \
+  -F "response_format=verbose_json"
+
+# Health check
+curl http://localhost:8080/v1/health
+```
+
+**Python client (OpenAI SDK compatible):**
+
+```python
 from openai import OpenAI
 
 client = OpenAI(
     base_url='http://localhost:8080/v1',
-    api_key='not-needed'
+    api_key='not-needed'  # no auth required
 )
 
 with open('audio.wav', 'rb') as f:
@@ -94,7 +115,6 @@ with open('audio.wav', 'rb') as f:
         file=f
     )
     print(transcript.text)
-"
 ```
 
 **Server options:**
@@ -108,7 +128,39 @@ with open('audio.wav', 'rb') as f:
 | `-t, --threads` | `4` | CPU threads for inference |
 | `--debug` | off | Enable debug output |
 
-The server uses a **slot-based parallelism model**: each parallel slot has its own inference context, allowing multiple requests to be processed concurrently without blocking each other. When all slots are busy, new requests receive a `429 Too Many Requests` response.
+**Server architecture:**
+
+The server is built on a **slot-based parallelism model**:
+
+```
+┌─────────────────────────────────────────────────┐
+│                  HTTP Server (httplib)           │
+│                                                  │
+│  POST /v1/audio/transcriptions                   │
+│         │                                        │
+│         ▼                                        │
+│  ┌──────────────────────────────┐                │
+│  │     Slot Pool (mutex-protected)               │
+│  │  ┌──────┐ ┌──────┐ ┌──────┐ │                │
+│  │  │Slot 0│ │Slot 1│ │Slot 2│ │ ... n_parallel │
+│  │  └──────┘ └──────┘ └──────┘ │                │
+│  └──────────────────────────────┘                │
+│         │  │  │                                  │
+│         ▼  ▼  ▼                                  │
+│  ┌──────────────────────────────┐                │
+│  │   Shared Qwen3ASR Model      │  (read-only)   │
+│  └──────────────────────────────┘                │
+└─────────────────────────────────────────────────┘
+```
+
+1. **Slot Pool (`asr_slot_pool`)**: A fixed-size pool of pre-allocated inference slots, protected by a mutex. Each slot holds its own input/output buffers.
+2. **Acquire → Infer → Release**: On each request, the server acquires a free slot from the pool, runs inference synchronously on that slot, then releases it. If all slots are busy, the request gets a `429 Too Many Requests` response.
+3. **Shared model**: The underlying `Qwen3ASR` model instance is shared across all slots. The model itself is read-only during inference (GGML graph execution), so no locking is needed at the model level.
+4. **WAV parsing in-memory**: Audio files are parsed directly from the HTTP request body — no temp files. Supports PCM 16-bit, 32-bit float, 32-bit int, and 8-bit WAV formats, with automatic mono downmix and 16kHz resampling.
+5. **No external JSON dependency**: JSON responses are built with lightweight string helpers — no nlohmann/json or other dependency.
+6. **Timeout & limits**: 120s read/write timeout, 50MB max payload size.
+
+The `-np` flag controls concurrency: each parallel slot uses independent audio/text buffers, so requests don't interfere. The recommended value depends on your CPU cores — start with `-np 4` on a 4+ core machine.
 
 ## Quick Start
 
@@ -296,6 +348,7 @@ For production builds, omit `-DQWEN3_ASR_TIMING=ON` to remove timing overhead.
 qwen3-asr.cpp/
 ├── src/
 │   ├── main.cpp              # CLI entry point
+│   ├── server.cpp/h          # HTTP server (OpenAI-compatible API)
 │   ├── qwen3_asr.cpp/h       # High-level ASR API
 │   ├── forced_aligner.cpp/h  # Forced alignment implementation
 │   ├── audio_encoder.cpp/h   # Audio feature encoder
