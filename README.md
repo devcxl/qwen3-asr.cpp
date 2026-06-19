@@ -46,6 +46,57 @@ cmake --build . -j$(sysctl -n hw.ncpu)
 
 On Linux, replace `$(sysctl -n hw.ncpu)` with `$(nproc)`.
 
+### 5. Python Bindings
+
+Use the ASR engine directly from Python via pybind11 bindings:
+
+```bash
+# Install with pip (editable, requires CMake + C++17 compiler)
+pip install -e . --no-build-isolation
+
+# Or build with CMake directly
+mkdir -p build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release -DQWEN3_ASR_BUILD_PYTHON=ON
+cmake --build . -j$(nproc)
+```
+
+**Python usage:**
+
+```python
+from qwen3_asr import Qwen3ASR, TranscribeParams
+
+# Load model
+asr = Qwen3ASR()
+asr.load_model("models/qwen3-asr-0.6b-f16.gguf")
+
+# Transcribe audio file
+result = asr.transcribe("audio.wav")
+print(result.text)  # "language Chinese ..."
+
+# With custom parameters
+params = TranscribeParams()
+params.max_tokens = 2048
+params.n_threads = 8
+result = asr.transcribe("audio.wav", params)
+print(f"Decoded in {result.t_total_ms:.0f}ms")
+
+# Transcribe raw samples (numpy array)
+import numpy as np
+samples, sr = load_audio_file("audio.wav")  # (ok, samples, sample_rate)
+result = asr.transcribe_raw(np.array(samples, dtype=np.float32))
+print(result.text)
+
+# Context manager — auto cleanup
+with Qwen3ASR() as asr:
+    asr.load_model("models/qwen3-asr-0.6b-f16.gguf")
+    result = asr.transcribe("audio.wav")
+    print(result.text)
+```
+
+The Python module wraps the C++ `Qwen3ASR` class with RAII semantics — destructors run automatically on garbage collection, so there are no memory leaks.
+
+See [python/qwen3_asr/](python/qwen3_asr/) for the module sources.
+
 ### 4. HTTP Server (OpenAI-compatible API)
 
 Start the ASR HTTP server — provides OpenAI-compatible endpoints for audio transcription, supporting concurrent requests with slot-based parallelism:
@@ -357,6 +408,14 @@ qwen3-asr.cpp/
 │   ├── audio_injection.cpp/h # Audio-text embedding injection
 │   ├── gguf_loader.cpp/h     # GGUF model loading
 │   └── timing.h              # Timing instrumentation macros
+├── python/
+│   ├── bindings.cpp          # pybind11 bindings (_core module)
+│   └── qwen3_asr/
+│       ├── __init__.py       # Python package init
+│       └── _core*.so         # Compiled extension (gitignored)
+├── cmake/
+│   └── python.cmake          # CMake config for Python bindings
+├── pyproject.toml             # pip build config (scikit-build-core)
 ├── tests/
 │   ├── test_mel.cpp          # Mel spectrogram tests
 │   ├── test_encoder.cpp      # Audio encoder tests
