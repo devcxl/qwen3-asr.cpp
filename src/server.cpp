@@ -95,9 +95,9 @@ asr_slot_pool::~asr_slot_pool() {
 int asr_slot_pool::acquire() {
   std::lock_guard<std::mutex> lock(mutex_);
   for (int i = 0; i < n_slots_; i++) {
-    if (!slots_[i].busy.load()) {
+    if (!slots_[i].busy) {
       slots_[i].reset();
-      slots_[i].busy.store(true);
+      slots_[i].busy = true;
       return i;
     }
   }
