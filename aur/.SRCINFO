@@ -1,0 +1,19 @@
+pkgbase = qwen3-asr-cpp
+pkgdesc = Qwen3-ASR GGML inference engine - CPU-optimized automatic speech recognition
+pkgver = 0.1.0
+pkgrel = 1
+url = https://github.com/devcxl/qwen3-asr.cpp
+install = 
+arch = x86_64
+license = MIT
+makedepends = cmake
+makedepends = ninja
+makedepends = git
+depends = gcc-libs
+depends = glibc
+optdepends = python-pybind11: Python bindings
+optdepends = python: Python bindings runtime
+source = qwen3-asr-cpp-0.1.0.tar.gz::https://github.com/devcxl/qwen3-asr.cpp/archive/v0.1.0.tar.gz
+sha256sums = SKIP
+
+pkgname = qwen3-asr-cpp

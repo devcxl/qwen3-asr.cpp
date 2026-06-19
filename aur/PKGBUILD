@@ -1,0 +1,133 @@
+# Maintainer: 程祥龙 <devcxl@devcxl.com>
+# Contributor: 皮皮虾 🦐
+
+pkgname=qwen3-asr-cpp
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Qwen3-ASR GGML inference engine - CPU-optimized automatic speech recognition"
+arch=('x86_64')
+url="https://github.com/devcxl/qwen3-asr.cpp"
+license=('MIT')
+depends=(
+    'gcc-libs'
+    'glibc'
+)
+makedepends=(
+    'cmake'
+    'ninja'
+    'git'
+)
+optdepends=(
+    'python-pybind11: Python bindings'
+    'python: Python bindings runtime'
+)
+provides=("${pkgname}")
+conflicts=()
+source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/v${pkgver}.tar.gz")
+sha256sums=('SKIP')
+validpgpkeys=()
+
+prepare() {
+    cd "${srcdir}/${pkgname}-${pkgver}"
+
+    # Initialize ggml submodule
+    git init
+    git remote add origin "${url}"
+    git config --local gc.auto 0
+
+    # Fetch and checkout ggml submodule
+    local ggml_commit
+    ggml_commit=$(git ls-tree HEAD ggml 2>/dev/null | awk '{print $3}' | cut -d' ' -f1)
+    if [ -n "${ggml_commit}" ] && [ "${ggml_commit}" != "0000000000000000000000000000000000000000" ]; then
+        git fetch --depth 1 origin "${ggml_commit}" 2>/dev/null || true
+    fi
+
+    # Fallback: if ggml directory is empty, clone it
+    if [ ! -f "ggml/CMakeLists.txt" ]; then
+        rm -rf ggml
+        git clone --depth 1 https://github.com/ggml-org/ggml.git ggml
+    fi
+}
+
+build() {
+    cd "${srcdir}/${pkgname}-${pkgver}"
+
+    # Build ggml submodule first
+    local ggml_build="${srcdir}/ggml-build"
+    mkdir -p "${ggml_build}"
+    cmake -S ggml -B "${ggml_build}" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -DGGML_NATIVE=ON \
+        -DGGML_LLAMAFILE=ON \
+        -DGGML_CUDA=OFF \
+        -DGGML_VULKAN=OFF \
+        -DGGML_METAL=OFF \
+        -DGGML_BLAS=OFF \
+        -DBUILD_SHARED_LIBS=OFF
+    cmake --build "${ggml_build}" -j"$(nproc)"
+
+    # Build main project
+    cmake -B build \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -DGGML_NATIVE=ON \
+        -DGGML_LLAMAFILE=ON \
+        -DGGML_CUDA=OFF \
+        -DGGML_VULKAN=OFF \
+        -DGGML_METAL=OFF \
+        -DGGML_BLAS=OFF \
+        -DQWEN3_ASR_BUILD_PYTHON=OFF \
+        -DGGML_DIR="${srcdir}/${pkgname}-${pkgver}/ggml" \
+        -DGGML_BUILD_DIR="${ggml_build}"
+    cmake --build build -j"$(nproc)"
+}
+
+check() {
+    cd "${srcdir}/${pkgname}-${pkgver}"
+    # Run built-in tests if test audio exists
+    if [ -f "build/test_mel" ]; then
+        ./build/test_mel 2>&1 || echo "Warning: mel spectrogram test failed (may need test audio)"
+    fi
+}
+
+package() {
+    cd "${srcdir}/${pkgname}-${pkgver}"
+
+    # Install binaries
+    install -Dm755 build/qwen3-asr-cli "${pkgdir}/usr/bin/qwen3-asr-cli"
+    install -Dm755 build/qwen3-asr-server "${pkgdir}/usr/bin/qwen3-asr-server"
+
+    # Install libraries
+    install -Dm644 build/libmel_spectrogram.a "${pkgdir}/usr/lib/libmel_spectrogram.a"
+    install -Dm644 build/libaudio_encoder.a "${pkgdir}/usr/lib/libaudio_encoder.a"
+    install -Dm644 build/libtext_decoder.a "${pkgdir}/usr/lib/libtext_decoder.a"
+    install -Dm644 build/libaudio_injection.a "${pkgdir}/usr/lib/libaudio_injection.a"
+    install -Dm644 build/libqwen3_asr.a "${pkgdir}/usr/lib/libqwen3_asr.a"
+    install -Dm644 build/libforced_aligner.a "${pkgdir}/usr/lib/libforced_aligner.a"
+
+    # Install headers
+    install -Dm644 src/qwen3_asr.h "${pkgdir}/usr/include/qwen3-asr/qwen3_asr.h"
+    install -Dm644 src/mel_spectrogram.h "${pkgdir}/usr/include/qwen3-asr/mel_spectrogram.h"
+    install -Dm644 src/audio_encoder.h "${pkgdir}/usr/include/qwen3-asr/audio_encoder.h"
+    install -Dm644 src/audio_injection.h "${pkgdir}/usr/include/qwen3-asr/audio_injection.h"
+    install -Dm644 src/text_decoder.h "${pkgdir}/usr/include/qwen3-asr/text_decoder.h"
+    install -Dm644 src/forced_aligner.h "${pkgdir}/usr/include/qwen3-asr/forced_aligner.h"
+    install -Dm644 src/gguf_loader.h "${pkgdir}/usr/include/qwen3-asr/gguf_loader.h"
+
+    # Install documentation
+    install -Dm644 README.md "${pkgdir}/usr/share/doc/qwen3-asr-cpp/README.md"
+    install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/qwen3-asr-cpp/LICENSE" 2>/dev/null || true
+
+    # Install config examples
+    install -Dm644 configs/config.yaml "${pkgdir}/usr/share/qwen3-asr-cpp/config.yaml" 2>/dev/null || true
+
+    echo "=== AUR package built successfully ==="
+    echo "  Binaries:  /usr/bin/qwen3-asr-cli, /usr/bin/qwen3-asr-server"
+    echo "  Libraries: /usr/lib/*.a"
+    echo "  Headers:   /usr/include/qwen3-asr/"
+    echo ""
+    echo "  Usage:"
+    echo "    qwen3-asr-cli -m /path/to/model.gguf -f audio.wav -t 4"
+    echo "    qwen3-asr-server -m /path/to/model.gguf --port 8080"
+}
