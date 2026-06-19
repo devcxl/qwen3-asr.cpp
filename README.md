@@ -46,6 +46,70 @@ cmake --build . -j$(sysctl -n hw.ncpu)
 
 On Linux, replace `$(sysctl -n hw.ncpu)` with `$(nproc)`.
 
+### 4. HTTP Server (OpenAI-compatible API)
+
+Start the ASR HTTP server with OpenAI-compatible endpoints for audio transcription:
+
+```bash
+# Start server
+./build/qwen3-asr-server -m models/qwen3-asr-0.6b-f16.gguf --host 0.0.0.0 --port 8080
+
+# With parallel inference slots (handle multiple concurrent requests)
+./build/qwen3-asr-server -m models/qwen3-asr-0.6b-f16.gguf -np 4 -t 4
+```
+
+**Endpoints:**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/v1/health` | Health check |
+| `GET` | `/v1/models` | List available models |
+| `POST` | `/v1/audio/transcriptions` | Transcribe audio (OpenAI-compatible) |
+
+**Usage with curl:**
+
+```bash
+# Transcribe audio file
+curl http://localhost:8080/v1/audio/transcriptions \
+  -F "file=@audio.wav" \
+  -F "response_format=json"
+
+# Get text output
+curl http://localhost:8080/v1/audio/transcriptions \
+  -F "file=@audio.wav" \
+  -F "response_format=text"
+
+# Python client (OpenAI SDK compatible)
+python3 -c "
+from openai import OpenAI
+
+client = OpenAI(
+    base_url='http://localhost:8080/v1',
+    api_key='not-needed'
+)
+
+with open('audio.wav', 'rb') as f:
+    transcript = client.audio.transcriptions.create(
+        model='qwen3-asr',
+        file=f
+    )
+    print(transcript.text)
+"
+```
+
+**Server options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-m, --model` | (required) | Path to Qwen3 ASR GGUF model |
+| `--host` | `127.0.0.1` | Host address to bind |
+| `--port` | `8080` | Port to listen on |
+| `-np, --n-parallel` | `1` | Number of parallel inference slots |
+| `-t, --threads` | `4` | CPU threads for inference |
+| `--debug` | off | Enable debug output |
+
+The server uses a **slot-based parallelism model**: each parallel slot has its own inference context, allowing multiple requests to be processed concurrently without blocking each other. When all slots are busy, new requests receive a `429 Too Many Requests` response.
+
 ## Quick Start
 
 ### 1. Transcription (ASR)

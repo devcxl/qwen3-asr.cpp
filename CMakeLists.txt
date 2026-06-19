@@ -313,3 +313,31 @@ target_link_libraries(test_conv1 PRIVATE
     audio_encoder
     Threads::Threads
 )
+
+# ============================================================
+# ASR HTTP Server
+# ============================================================
+
+# httplib header-only library
+add_library(httplib INTERFACE)
+target_include_directories(httplib INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+
+add_executable(qwen3-asr-server
+    src/server.cpp
+)
+target_link_libraries(qwen3-asr-server PRIVATE
+    qwen3_asr
+    httplib
+    Threads::Threads
+)
+if(APPLE)
+    target_link_libraries(qwen3-asr-server PRIVATE
+        "-framework Accelerate"
+    )
+endif()
+
+install(TARGETS qwen3-asr-server
+    RUNTIME DESTINATION bin
+)
