@@ -49,6 +49,7 @@ jobs:
           -DGGML_BLAS=OFF \
           -DBUILD_SHARED_LIBS=OFF \
           -DGGML_NATIVE=OFF \
+          -DGGML_ACCELERATE=OFF \
           -DGGML_STANDALONE=OFF
 
     - name: Build ggml
