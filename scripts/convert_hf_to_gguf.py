@@ -26,10 +26,7 @@ import torch
 from safetensors import safe_open
 from tqdm import tqdm
 
-# Add gguf-py to path
-GGUF_PY_PATH = Path("/root/llama.cpp/gguf-py")
-if GGUF_PY_PATH.exists():
-    sys.path.insert(0, str(GGUF_PY_PATH))
+# gguf is installed via pip, no need for local path
 
 import gguf
 
